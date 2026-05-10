@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="♫ Comparador" />
+  <title>Spotify × Drive</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --card: #16161f;
+      --border: #1e1e2e;
+      --accent: #1DB954;
+      --red: #ff4757;
+      --yellow: #ffa502;
+      --blue: #4285F4;
+      --text: #e8e8f0;
+      --muted: #5a5a7a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; overflow-x: hidden; }
+    .mono { font-family: 'Space Mono', monospace; }
+
+    /* ── HEADER ── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 16px 20px; display: flex; align-items: center; gap: 12;
+    }
+    .header-title { font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
+    .header-sub { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── PAGES ── */
+    .page { display: none; flex-direction: column; min-height: calc(100vh - 57px); padding: 20px 16px 100px; }
+    .page.active { display: flex; }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4;
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-family: 'Space Mono', monospace; font-size: 9px; padding: 6px 0;
+      transition: color .2s;
+    }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn svg { width: 22px; height: 22px; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 20px; margin-bottom: 16px;
+    }
+    .card-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .card-sub { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+
+    /* ── INPUTS ── */
+    .input {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; color: var(--text); font-size: 14px;
+      font-family: 'Space Mono', monospace; outline: none; margin-bottom: 10px;
+      transition: border-color .2s;
+    }
+    .input:focus { border-color: var(--accent); }
+
+    /* ── BUTTONS ── */
+    .btn {
+      width: 100%; border: none; border-radius: 10px; padding: 14px;
+      font-weight: 700; font-size: 14px; font-family: 'Syne', sans-serif;
+      cursor: pointer; transition: opacity .2s, transform .1s; display: flex;
+      align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:active { transform: scale(0.98); opacity: 0.85; }
+    .btn-spotify { background: var(--accent); color: #000; }
+    .btn-drive { background: var(--blue); color: #fff; }
+    .btn-run { background: linear-gradient(135deg, #1DB954, #17a349); color: #000; font-size: 16px; padding: 16px; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── BADGE ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      border-radius: 6px; padding: 4px 10px; font-size: 11px;
+      font-family: 'Space Mono', monospace; font-weight: 700; letter-spacing: 0.5px;
+    }
+
+    /* ── STAT CARDS ── */
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px; text-align: center; }
+    .stat-val { font-size: 26px; font-weight: 800; }
+    .stat-label { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); margin-top: 4px; }
+
+    /* ── FILTER PILLS ── */
+    .pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; scrollbar-width: none; }
+    .pills::-webkit-scrollbar { display: none; }
+    .pill {
+      flex-shrink: 0; border-radius: 20px; padding: 6px 14px;
+      font-size: 12px; font-weight: 600; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap;
+      font-family: 'Syne', sans-serif; transition: all .2s;
+    }
+    .pill.active { border-color: var(--accent); background: #1DB95422; color: var(--accent); }
+
+    /* ── SEARCH BAR ── */
+    .search-wrap { position: relative; margin-bottom: 12px; }
+    .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
+    .search-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px 11px 34px; color: var(--text); font-size: 13px; font-family: 'Space Mono', monospace; outline: none; }
+
+    /* ── TRACK LIST ── */
+    .track-list { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .track-item {
+      display: flex; align-items: center; gap: 10; padding: 12px 14px;
+      border-bottom: 1px solid var(--border); animation: fadeIn .25s ease both;
+    }
+    .track-item:last-child { border-bottom: none; }
+    .track-idx { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); min-width: 28px; }
+    .track-info { flex: 1; min-width: 0; }
+    .track-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .track-artist { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .track-match { font-size: 10px; color: var(--accent); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Space Mono', monospace; }
+    .track-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── STATUS ── */
+    .status-box { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 12px; padding: 16px; margin-bottom: 16px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--accent); animation: pulse 1.5s ease infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+    /* ── EMPTY ── */
+    .empty { text-align: center; padding: 48px 20px; color: var(--muted); font-family: 'Space Mono', monospace; font-size: 12px; line-height: 2; }
+
+    /* ── INSTRUCTIONS ── */
+    .step { display: flex; gap: 12px; margin-bottom: 14px; }
+    .step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #000; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .step-text { font-size: 13px; line-height: 1.6; color: var(--text); }
+    .step-text code { font-family: 'Space Mono', monospace; font-size: 11px; background: var(--surface); padding: 1px 6px; border-radius: 4px; color: var(--accent); }
+
+    .divider { height: 1px; background: var(--border); margin: 20px 0; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="header-title"><span style="color:var(--accent)">♫</span> Spotify × Drive</div>
+    <div class="header-sub">MUSIC COMPARATOR</div>
+  </div>
+  <div style="flex:1"></div>
+  <div id="header-badges" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+</div>
+
+<!-- PAGE: CONFIG -->
+<div class="page active" id="page-config">
+
+  <div class="card" style="border-left:4px solid var(--accent)">
+    <div class="card-title">1 · Spotify</div>
+    <div class="card-sub">Precisas de um Client ID da Spotify Developer App.</div>
+    <input class="input" id="spotify-client-id" placeholder="Cola aqui o Client ID…" autocomplete="off" />
+    <button class="btn btn-spotify" onclick="loginSpotify()">
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.622.622 0 0 1-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 0 1-.277-1.215c3.809-.87 7.076-.496 9.712 1.115a.623.623 0 0 1 .207.857zm1.223-2.722a.78.78 0 0 1-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 0 1-.973-.519.781.781 0 0 1 .52-.973c3.632-1.102 8.147-.568 11.233 1.329a.78.78 0 0 1 .257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 1 1-.543-1.794c3.532-1.071 9.404-.864 13.115 1.338a.937.937 0 0 1-.954 1.614z"/></svg>
+      Ligar Spotify
+    </button>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--blue)">
+    <div class="card-title">2 · Google Drive <span style="font-size:11px;color:var(--muted);font-weight:400">(opcional)</span></div>
+    <div class="card-sub">Autoriza acesso ao Drive para varrer os teus ficheiros de áudio.</div>
+    <input class="input" id="drive-client-id" placeholder="Google OAuth Client ID…" autocomplete="off" />
+    <button class="btn btn-drive" onclick="loginDrive()">
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px"><path d="M6.28 3l5.72 9.9L6.28 3zM1 17l2.42 4h17.16L23 17l-5.72-9.9L12 17 6.28 7.1 1 17zm21 0H2l4.28-7h11.44L22 17z"/></svg>
+      Ligar Google Drive
+    </button>
+  </div>
+
+  <div style="margin-top:4px">
+    <button class="btn btn-run" id="btn-run" onclick="runComparison()" disabled>
+      ▶ Comparar músicas
+    </button>
+  </div>
+</div>
+
+<!-- PAGE: RESULTS -->
+<div class="page" id="page-results">
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-val" id="stat-match" style="color:var(--accent)">—</div>
+      <div class="stat-label">MATCH</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="stat-spotify" style="color:var(--red)">—</div>
+      <div class="stat-label">SÓ SPOTIFY</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="stat-drive" style="color:var(--yellow)">—</div>
+      <div class="stat-label">SÓ DRIVE</div>
+    </div>
+  </div>
+
+  <div class="pills" id="pills">
+    <button class="pill active" onclick="setFilter('all')">Todas</button>
+    <button class="pill" onclick="setFilter('matched')">✓ Match</button>
+    <button class="pill" onclick="setFilter('spotify')">Só Spotify</button>
+    <button class="pill" onclick="setFilter('drive')">Só Drive</button>
+  </div>
+
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input class="search-input" id="search" placeholder="Pesquisar…" oninput="renderList()" />
+  </div>
+
+  <div id="status-box" class="status-box" style="display:none"></div>
+
+  <div class="track-list" id="track-list">
+    <div class="empty">Ainda sem resultados.<br>Vai ao separador Configurar.</div>
+  </div>
+
+  <div style="margin-top:16px">
+    <button class="btn btn-outline" onclick="exportCSV()">↓ Exportar CSV</button>
+  </div>
+</div>
+
+<!-- PAGE: AJUDA -->
+<div class="page" id="page-help">
+  <div class="card">
+    <div class="card-title" style="color:var(--accent);margin-bottom:16px">Como criar a app Spotify</div>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Vai a <code>developer.spotify.com/dashboard</code> e faz login com a tua conta Spotify.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">Clica em <strong>"Create app"</strong>. Preenches qualquer nome e descrição.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Em <strong>Redirect URI</strong>, introduz o URL desta página (o endereço que aparece no browser).</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-text">Em <strong>APIs used</strong>, seleciona <strong>Web API</strong>.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-text">Guarda → vai a <strong>Settings</strong> → copia o <strong>Client ID</strong> e cola no separador Configurar.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:4px">
+    <div class="card-title" style="color:var(--blue);margin-bottom:16px">Como criar a app Google Drive</div>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Vai a <code>console.cloud.google.com</code> e cria um projeto novo.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">Ativa a <strong>Google Drive API</strong> em "APIs e serviços".</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Cria credenciais → <strong>OAuth 2.0 Client ID</strong> → tipo <strong>Aplicação Web</strong>.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-text">Adiciona o URL desta página como <strong>Authorized redirect URI</strong>.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-text">Copia o <strong>Client ID</strong> e cola no separador Configurar.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:4px;border-left:3px solid var(--yellow)">
+    <div class="card-title" style="margin-bottom:8px">📲 Instalar como app Android</div>
+    <div style="font-size:13px;line-height:1.8;color:var(--text)">
+      1. Abre esta página no <strong>Chrome</strong> no teu Android.<br>
+      2. Toca nos <strong>3 pontos</strong> no canto superior direito.<br>
+      3. Seleciona <strong>"Adicionar ao ecrã principal"</strong>.<br>
+      4. Confirma — aparece o ícone como uma app normal! 🎉
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" id="nav-config" onclick="showPage('config')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+    CONFIGURAR
+  </button>
+  <button class="nav-btn" id="nav-results" onclick="showPage('results')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    RESULTADOS
+  </button>
+  <button class="nav-btn" id="nav-help" onclick="showPage('help')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    AJUDA
+  </button>
+</nav>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let spotifyToken = null, driveToken = null;
+let results = { matched: [], spotifyOnly: [], driveOnly: [] };
+let currentFilter = 'all';
+
+// ── Nav ────────────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+}
+
+// ── Fuzzy match ────────────────────────────────────────────────────────────
+function normalize(s) {
+  return s.toLowerCase()
+    .replace(/\.(mp3|flac|wav|aac|ogg|m4a|opus|wma)$/i, '')
+    .replace(/[_\-–—]/g, ' ').replace(/\s+/g, ' ')
+    .replace(/[^\w\sÀ-ÿ]/g, '').trim();
+}
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m+1}, (_, i) =>
+    Array.from({length: n+1}, (_, j) => i===0 ? j : j===0 ? i : 0));
+  for (let i=1;i<=m;i++) for (let j=1;j<=n;j++)
+    dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function similarity(a, b) {
+  const na=normalize(a), nb=normalize(b);
+  if(!na||!nb) return 0;
+  return 1 - levenshtein(na,nb)/Math.max(na.length,nb.length);
+}
+const THRESHOLD = 0.82;
+
+function findBestMatch(track, driveFiles) {
+  const label = `${track.artists?.[0]?.name||''} ${track.name}`;
+  let best=null, bestScore=0;
+  for(const f of driveFiles) {
+    const s = similarity(label, f.name);
+    if(s > bestScore) { bestScore=s; best=f; }
+  }
+  return bestScore >= THRESHOLD ? {file:best, score:bestScore} : null;
+}
+
+// ── Spotify OAuth PKCE ─────────────────────────────────────────────────────
+async function loginSpotify() {
+  const clientId = document.getElementById('spotify-client-id').value.trim();
+  if(!clientId) return alert('Introduz o Client ID do Spotify.');
+  localStorage.setItem('spotify_client_id', clientId);
+
+  const arr = crypto.getRandomValues(new Uint8Array(32));
+  const verifier = btoa(String.fromCharCode(...arr)).replace(/[+/=]/g,c=>({'+':'-','/':'_','=':''}[c]));
+  sessionStorage.setItem('spotify_verifier', verifier);
+
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/[+/=]/g,c=>({'+':'-','/':'_','=':''}[c]));
+
+  const params = new URLSearchParams({
+    client_id: clientId, response_type: 'code',
+    redirect_uri: location.href.split('?')[0],
+    code_challenge_method: 'S256', code_challenge: challenge,
+    scope: 'user-library-read playlist-read-private playlist-read-collaborative'
+  });
+  location.href = 'https://accounts.spotify.com/authorize?' + params;
+}
+
+async function handleSpotifyCallback() {
+  const code = new URLSearchParams(location.search).get('code');
+  if(!code) return;
+  const verifier = sessionStorage.getItem('spotify_verifier');
+  const clientId = localStorage.getItem('spotify_client_id');
+  if(!verifier || !clientId) return;
+
+  setStatus('A autenticar com Spotify…');
+  const r = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({
+      grant_type:'authorization_code', code,
+      redirect_uri: location.href.split('?')[0],
+      client_id: clientId, code_verifier: verifier
+    })
+  });
+  const d = await r.json();
+  if(d.access_token) {
+    spotifyToken = d.access_token;
+    updateBadges();
+    checkRunReady();
+    setStatus('');
+    document.getElementById('spotify-client-id').value = clientId;
+  }
+  history.replaceState({}, '', location.pathname);
+}
+
+// ── Google Drive OAuth ─────────────────────────────────────────────────────
+function loginDrive() {
+  const clientId = document.getElementById('drive-client-id').value.trim();
+  if(!clientId) return alert('Introduz o Client ID do Google.');
+  localStorage.setItem('drive_client_id', clientId);
+
+  // Store token in hash for same-page redirect
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: location.href.split('?')[0],
+    response_type: 'token',
+    scope: 'https://www.googleapis.com/auth/drive.readonly',
+    include_granted_scopes: 'true'
+  });
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+function handleDriveCallback() {
+  const hash = location.hash.substring(1);
+  if(!hash) return;
+  const params = new URLSearchParams(hash);
+  const token = params.get('access_token');
+  if(token) {
+    driveToken = token;
+    updateBadges();
+    checkRunReady();
+    history.replaceState({}, '', location.pathname);
+  }
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+function updateBadges() {
+  const el = document.getElementById('header-badges');
+  el.innerHTML = '';
+  if(spotifyToken) el.innerHTML += `<span class="badge" style="background:#1DB95422;color:var(--accent);border:1px solid #1DB95444">✓ Spotify</span>`;
+  if(driveToken)   el.innerHTML += `<span class="badge" style="background:#4285F422;color:var(--blue);border:1px solid #4285F444">✓ Drive</span>`;
+}
+
+function checkRunReady() {
+  document.getElementById('btn-run').disabled = !spotifyToken;
+}
+
+function setStatus(msg) {
+  const el = document.getElementById('status-box');
+  if(msg) { el.style.display='block'; el.textContent='⬡ ' + msg; }
+  else el.style.display='none';
+}
+
+// ── Fetch Spotify ──────────────────────────────────────────────────────────
+async function fetchAllSpotify() {
+  const tracks = [];
+  let url = 'https://api.spotify.com/v1/me/tracks?limit=50';
+  while(url) {
+    const r = await fetch(url, {headers:{Authorization:`Bearer ${spotifyToken}`}});
+    const d = await r.json();
+    d.items.forEach(i => tracks.push({...i.track, _source:'❤️'}));
+    url = d.next;
+    setStatus(`Liked songs: ${tracks.length}…`);
+  }
+  let plUrl = 'https://api.spotify.com/v1/me/playlists?limit=50';
+  const playlists = [];
+  while(plUrl) {
+    const r = await fetch(plUrl, {headers:{Authorization:`Bearer ${spotifyToken}`}});
+    const d = await r.json();
+    playlists.push(...d.items); plUrl = d.next;
+  }
+  for(const pl of playlists) {
+    let tUrl = `https://api.spotify.com/v1/playlists/${pl.id}/tracks?limit=100`;
+    while(tUrl) {
+      const r = await fetch(tUrl, {headers:{Authorization:`Bearer ${spotifyToken}`}});
+      const d = await r.json();
+      d.items.forEach(i => i.track && tracks.push({...i.track, _source:`🎵 ${pl.name}`}));
+      tUrl = d.next;
+    }
+    setStatus(`Playlist: ${pl.name}…`);
+  }
+  const seen = new Set();
+  return tracks.filter(t => t?.id && !seen.has(t.id) && seen.add(t.id));
+}
+
+// ── Fetch Drive ────────────────────────────────────────────────────────────
+async function fetchDriveFiles(folderId=null, all=[]) {
+  const q = folderId
+    ? `'${folderId}' in parents and trashed=false`
+    : `trashed=false`;
+  let pageToken = null;
+  do {
+    const params = new URLSearchParams({
+      q, fields:'nextPageToken,files(id,name,mimeType)', pageSize:'1000',
+      ...(pageToken ? {pageToken} : {})
+    });
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+      headers:{Authorization:`Bearer ${driveToken}`}
+    });
+    const d = await r.json();
+    const audio = (d.files||[]).filter(f => /\.(mp3|flac|wav|aac|ogg|m4a|opus|wma)$/i.test(f.name));
+    all.push(...audio);
+    const folders = (d.files||[]).filter(f => f.mimeType==='application/vnd.google-apps.folder');
+    for(const folder of folders) await fetchDriveFiles(folder.id, all);
+    setStatus(`Drive: ${all.length} ficheiros encontrados…`);
+    pageToken = d.nextPageToken;
+  } while(pageToken);
+  return all;
+}
+
+// ── Run ────────────────────────────────────────────────────────────────────
+async function runComparison() {
+  if(!spotifyToken) return;
+  showPage('results');
+  setStatus('A iniciar…');
+
+  try {
+    const spotifyTracks = await fetchAllSpotify();
+    let driveFiles = [];
+    if(driveToken) driveFiles = await fetchDriveFiles();
+
+    setStatus('A comparar…');
+    const matched=[], spotifyOnly=[], driveOnly=[];
+    const usedIds = new Set();
+
+    for(const track of spotifyTracks) {
+      const m = findBestMatch(track, driveFiles);
+      if(m) { matched.push({track,match:m}); usedIds.add(m.file.id); }
+      else spotifyOnly.push({track});
+    }
+    driveFiles.forEach(f => { if(!usedIds.has(f.id)) driveOnly.push({file:f}); });
+
+    results = {matched, spotifyOnly, driveOnly};
+    document.getElementById('stat-match').textContent = matched.length;
+    document.getElementById('stat-spotify').textContent = spotifyOnly.length;
+    document.getElementById('stat-drive').textContent = driveOnly.length;
+
+    setStatus('');
+    setFilter('all');
+  } catch(e) {
+    setStatus('Erro: ' + e.message);
+  }
+}
+
+// ── Filter & Render ────────────────────────────────────────────────────────
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.pill').forEach((p,i) => {
+    p.classList.toggle('active', ['all','matched','spotify','drive'][i]===f);
+  });
+  renderList();
+}
+
+function renderList() {
+  const q = document.getElementById('search').value.toLowerCase();
+  let rows = [];
+  if(currentFilter==='all'||currentFilter==='matched')
+    results.matched.forEach(r => rows.push({...r, type:'matched'}));
+  if(currentFilter==='all'||currentFilter==='spotify')
+    results.spotifyOnly.forEach(r => rows.push({...r, type:'spotify'}));
+  if(currentFilter==='all'||currentFilter==='drive')
+    results.driveOnly.forEach(r => rows.push({...r, type:'drive'}));
+
+  if(q) rows = rows.filter(r => {
+    const name = r.track ? `${r.track.name} ${r.track.artists?.map(a=>a.name).join(' ')}` : r.file?.name||'';
+    return name.toLowerCase().includes(q);
+  });
+
+  const el = document.getElementById('track-list');
+  if(!rows.length) {
+    el.innerHTML = '<div class="empty">Sem resultados.<br>Tenta outro filtro.</div>'; return;
+  }
+
+  const colors = {matched:'var(--accent)', spotify:'var(--red)', drive:'var(--yellow)'};
+  el.innerHTML = rows.slice(0,500).map((r,i) => {
+    if(r.type==='drive') return `
+      <div class="track-item">
+        <span class="track-idx">${String(i+1).padStart(3,'0')}</span>
+        <div class="track-info">
+          <div class="track-name" style="color:var(--yellow)">${esc(r.file.name)}</div>
+          <div class="track-artist">Só no Drive</div>
+        </div>
+        <div class="track-dot" style="background:var(--yellow)"></div>
+      </div>`;
+    return `
+      <div class="track-item">
+        <span class="track-idx">${String(i+1).padStart(3,'0')}</span>
+        <div class="track-info">
+          <div class="track-name">${esc(r.track.name)}</div>
+          <div class="track-artist">${esc(r.track.artists?.map(a=>a.name).join(', ')||'')} · ${esc(r.track._source||'')}</div>
+          ${r.match ? `<div class="track-match">≈ ${esc(r.match.file.name)} (${Math.round(r.match.score*100)}%)</div>` : ''}
+        </div>
+        <div class="track-dot" style="background:${colors[r.type]}"></div>
+      </div>`;
+  }).join('');
+  if(rows.length>500) el.innerHTML += `<div class="empty">+ ${rows.length-500} mais…<br>Usa a pesquisa para filtrar.</div>`;
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Export CSV ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  const rows = [['Estado','Spotify Nome','Artistas','Fonte','Drive Ficheiro','Similaridade']];
+  results.matched.forEach(r => rows.push(['MATCH',r.track.name,r.track.artists.map(a=>a.name).join(';'),r.track._source,r.match.file.name,Math.round(r.match.score*100)+'%']));
+  results.spotifyOnly.forEach(r => rows.push(['SÓ SPOTIFY',r.track.name,r.track.artists.map(a=>a.name).join(';'),r.track._source,'','']));
+  results.driveOnly.forEach(r => rows.push(['SÓ DRIVE','','','',r.file.name,'']));
+  const csv = rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿'+csv,{type:'text/csv;charset=utf-8;'}]));
+  a.download = 'spotify_drive_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+handleSpotifyCallback();
+handleDriveCallback();
+
+const savedSpotify = localStorage.getItem('spotify_client_id');
+const savedDrive = localStorage.getItem('drive_client_id');
+if(savedSpotify) document.getElementById('spotify-client-id').value = savedSpotify;
+if(savedDrive) document.getElementById('drive-client-id').value = savedDrive;
+checkRunReady();
+</script>
+
+<!-- Service Worker registration -->
+<script>
+if('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
