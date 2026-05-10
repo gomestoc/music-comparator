@@ -196,8 +196,8 @@
 
       <!-- Playlist search/select — aparece ao escolher "playlist" -->
       <div id="playlist-search-box" style="display:none;margin-top:12px">
-        <input class="input" id="playlist-search-input" placeholder="Pesquisar playlist…"
-          oninput="filterPlaylists()" style="margin-bottom:8px" />
+        <input class="input" id="playlist-search-input" placeholder="Pesquisar por nome (erros tolerados)…"
+          oninput="filterPlaylists()" style="margin-bottom:8px" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
         <div id="playlist-list" style="max-height:220px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px">
           <div style="padding:16px;text-align:center;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px">
             A carregar playlists…
@@ -862,9 +862,26 @@ async function loadPlaylistList() {
 }
 
 function filterPlaylists() {
-  const q = document.getElementById('playlist-search-input').value.toLowerCase();
-  const filtered = q ? allPlaylists.filter(p => (p.name||'').toLowerCase().includes(q)) : allPlaylists;
-  renderPlaylistList(filtered);
+  const q = document.getElementById('playlist-search-input').value;
+  if(!q.trim()) { renderPlaylistList(allPlaylists); return; }
+
+  // Fuzzy score: combinação de contains + similaridade
+  const qn = normalize(q);
+  const scored = allPlaylists.map(p => {
+    const pn = normalize(p.name||'');
+    // Exact contains → score alto
+    if(pn.includes(qn)) return {p, score: 1 + (qn.length / (pn.length||1))};
+    // Fuzzy similarity
+    return {p, score: similarity(q, p.name||'')};
+  });
+
+  // Mostra só os que têm score mínimo, ordenados
+  const filtered = scored
+    .filter(s => s.score >= 0.35)
+    .sort((a,b) => b.score - a.score)
+    .map(s => s.p);
+
+  renderPlaylistList(filtered.length ? filtered : allPlaylists.slice(0, 10));
 }
 
 function renderPlaylistList(list) {
