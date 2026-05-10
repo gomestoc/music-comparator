@@ -241,7 +241,7 @@
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div class="step-text">Clica em <strong>"Create app"</strong>. Preenches qualquer nome e descrição.</div>
+      <div class="step-text">Clica em <strong>"Create app"</strong>. Preenche qualquer nome e descrição.</div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
@@ -455,31 +455,48 @@ function setStatus(msg) {
 // ── Fetch Spotify ──────────────────────────────────────────────────────────
 async function fetchAllSpotify() {
   const tracks = [];
+
+  // Liked songs
   let url = 'https://api.spotify.com/v1/me/tracks?limit=50';
   while(url) {
-    const r = await fetch(url, {headers:{Authorization:`Bearer ${spotifyToken}`}});
-    const d = await r.json();
-    d.items.forEach(i => tracks.push({...i.track, _source:'❤️'}));
-    url = d.next;
-    setStatus(`Liked songs: ${tracks.length}…`);
+    try {
+      const r = await fetch(url, {headers:{Authorization:`Bearer ${spotifyToken}`}});
+      const d = await r.json();
+      if(!d || d.error) { console.warn('Liked songs error', d); break; }
+      (d.items || []).forEach(i => { if(i?.track?.id) tracks.push({...i.track, _source:'❤️'}); });
+      url = d.next || null;
+      setStatus(`Liked songs: ${tracks.length}…`);
+    } catch(e) { console.warn('Liked songs fetch error', e); break; }
   }
+
+  // Playlists
   let plUrl = 'https://api.spotify.com/v1/me/playlists?limit=50';
   const playlists = [];
   while(plUrl) {
-    const r = await fetch(plUrl, {headers:{Authorization:`Bearer ${spotifyToken}`}});
-    const d = await r.json();
-    playlists.push(...d.items); plUrl = d.next;
+    try {
+      const r = await fetch(plUrl, {headers:{Authorization:`Bearer ${spotifyToken}`}});
+      const d = await r.json();
+      if(!d || d.error) { console.warn('Playlists error', d); break; }
+      (d.items || []).forEach(i => { if(i) playlists.push(i); });
+      plUrl = d.next || null;
+    } catch(e) { console.warn('Playlists fetch error', e); break; }
   }
+
   for(const pl of playlists) {
+    if(!pl?.id) continue;
     let tUrl = `https://api.spotify.com/v1/playlists/${pl.id}/tracks?limit=100`;
     while(tUrl) {
-      const r = await fetch(tUrl, {headers:{Authorization:`Bearer ${spotifyToken}`}});
-      const d = await r.json();
-      d.items.forEach(i => i.track && tracks.push({...i.track, _source:`🎵 ${pl.name}`}));
-      tUrl = d.next;
+      try {
+        const r = await fetch(tUrl, {headers:{Authorization:`Bearer ${spotifyToken}`}});
+        const d = await r.json();
+        if(!d || d.error) { console.warn('Playlist tracks error', pl.name, d); break; }
+        (d.items || []).forEach(i => { if(i?.track?.id) tracks.push({...i.track, _source:`🎵 ${pl.name||'?'}`}); });
+        tUrl = d.next || null;
+      } catch(e) { console.warn('Playlist tracks fetch error', pl.name, e); break; }
     }
-    setStatus(`Playlist: ${pl.name}…`);
+    setStatus(`Playlist: ${pl.name||'?'} (${tracks.length} total)…`);
   }
+
   const seen = new Set();
   return tracks.filter(t => t?.id && !seen.has(t.id) && seen.add(t.id));
 }
@@ -607,7 +624,7 @@ function exportCSV() {
   results.driveOnly.forEach(r => rows.push(['SÓ DRIVE','','','',r.file.name,'']));
   const csv = rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['﻿'+csv,{type:'text/csv;charset=utf-8;'}]));
+  a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv,{type:'text/csv;charset=utf-8;'}]));
   a.download = 'spotify_drive_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 }
