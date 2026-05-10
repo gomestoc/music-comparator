@@ -855,14 +855,20 @@ let selectedPlaylists = new Map(); // id → playlist object
 function onSourceChange() {
   const val = document.querySelector('input[name="spotify-source"]:checked').value;
   document.getElementById('playlist-search-box').style.display = val === 'playlist' ? 'block' : 'none';
-  if(val === 'playlist' && allPlaylists.length === 0 && spotifyToken) {
-    loadPlaylistList();
+  if(val === 'playlist') {
+    if(allPlaylists.length === 0 && spotifyToken) {
+      loadPlaylistList();
+    } else if(allPlaylists.length > 0) {
+      // já carregadas — renderiza imediatamente
+      document.getElementById('playlist-count').textContent = `${allPlaylists.length} playlists`;
+      renderPlaylistList(allPlaylists);
+    }
   }
 }
 
 async function loadPlaylistList() {
   const listEl = document.getElementById('playlist-list');
-  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-family:Space Mono,monospace;font-size:11px">A carregar…</div>';
+  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ A carregar playlists…</div>';
   allPlaylists = [];
   let url = 'https://api.spotify.com/v1/me/playlists?limit=50';
   while(url) {
@@ -870,6 +876,8 @@ async function loadPlaylistList() {
     if(!d) break;
     (d.items||[]).forEach(i => { if(i?.id) allPlaylists.push(i); });
     url = d.next || null;
+    // mostrar progresso em tempo real
+    listEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--accent);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ ${allPlaylists.length} playlists carregadas…</div>`;
   }
   allPlaylists.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'pt'));
   document.getElementById('playlist-count').textContent = `${allPlaylists.length} playlists`;
@@ -972,9 +980,13 @@ function clearSelectedPlaylists() {
   filterPlaylists();
 }
 
-// Show selector after login
+// Show selector after login and auto-load playlists
 function showPlaylistSelector() {
   document.getElementById('playlist-selector').style.display = 'block';
+  // Auto-carregar playlists em background assim que o token está disponível
+  if(spotifyToken && allPlaylists.length === 0) {
+    loadPlaylistList();
+  }
 }
 </script>
 
