@@ -178,6 +178,22 @@
     <div class="card-title">2 · Google Drive <span style="font-size:11px;color:var(--muted);font-weight:400">(opcional)</span></div>
     <div class="card-sub">Autoriza acesso ao Drive para varrer os teus ficheiros de áudio.</div>
     <input class="input" id="drive-client-id" placeholder="Google OAuth Client ID…" autocomplete="off" />
+
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:6px;">
+        PASTA (opcional) — cola o link da pasta do Drive
+      </div>
+      <input class="input" id="drive-folder-url"
+        placeholder="https://drive.google.com/drive/folders/…"
+        autocomplete="off"
+        style="margin-bottom:0"
+        oninput="saveFolderUrl()" />
+      <div id="folder-preview" style="font-size:10px;color:var(--accent);font-family:'Space Mono',monospace;margin-top:5px;min-height:14px"></div>
+      <div style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:3px;">
+        Se vazio → varre o Drive todo
+      </div>
+    </div>
+
     <button class="btn btn-drive" onclick="loginDrive()">
       <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px"><path d="M6.28 3l5.72 9.9L6.28 3zM1 17l2.42 4h17.16L23 17l-5.72-9.9L12 17 6.28 7.1 1 17zm21 0H2l4.28-7h11.44L22 17z"/></svg>
       Ligar Google Drive
@@ -501,6 +517,35 @@ async function fetchAllSpotify() {
   return tracks.filter(t => t?.id && !seen.has(t.id) && seen.add(t.id));
 }
 
+// ── Folder URL helpers ────────────────────────────────────────────────────
+function extractFolderId(url) {
+  if(!url) return null;
+  // https://drive.google.com/drive/folders/FOLDER_ID
+  const m = url.match(/\/folders\/([a-zA-Z0-9_-]{10,})/);
+  if(m) return m[1];
+  // bare ID
+  if(/^[a-zA-Z0-9_-]{10,}$/.test(url.trim())) return url.trim();
+  return null;
+}
+
+function saveFolderUrl() {
+  const val = document.getElementById('drive-folder-url').value;
+  const id = extractFolderId(val);
+  const prev = document.getElementById('folder-preview');
+  if(id) {
+    prev.textContent = '✓ ID: ' + id;
+    localStorage.setItem('drive_folder_id', id);
+  } else if(val.trim()) {
+    prev.textContent = '✗ Link não reconhecido';
+    prev.style.color = 'var(--red)';
+    localStorage.removeItem('drive_folder_id');
+  } else {
+    prev.textContent = 'Sem pasta → varre o Drive todo';
+    prev.style.color = 'var(--muted)';
+    localStorage.removeItem('drive_folder_id');
+  }
+}
+
 // ── Fetch Drive ────────────────────────────────────────────────────────────
 async function fetchDriveFiles(folderId=null, all=[]) {
   const q = folderId
@@ -535,7 +580,12 @@ async function runComparison() {
   try {
     const spotifyTracks = await fetchAllSpotify();
     let driveFiles = [];
-    if(driveToken) driveFiles = await fetchDriveFiles();
+    if(driveToken) {
+      const rootFolderId = localStorage.getItem('drive_folder_id') || null;
+      if(rootFolderId) setStatus(`A varrer pasta ${rootFolderId}…`);
+      else setStatus('A varrer Drive completo…');
+      driveFiles = await fetchDriveFiles(rootFolderId);
+    }
 
     setStatus('A comparar…');
     const matched=[], spotifyOnly=[], driveOnly=[];
@@ -635,8 +685,13 @@ handleDriveCallback();
 
 const savedSpotify = localStorage.getItem('spotify_client_id');
 const savedDrive = localStorage.getItem('drive_client_id');
+const savedFolderId = localStorage.getItem('drive_folder_id');
 if(savedSpotify) document.getElementById('spotify-client-id').value = savedSpotify;
 if(savedDrive) document.getElementById('drive-client-id').value = savedDrive;
+if(savedFolderId) {
+  document.getElementById('drive-folder-url').value = savedFolderId;
+  document.getElementById('folder-preview').textContent = '✓ ID: ' + savedFolderId;
+}
 checkRunReady();
 </script>
 
