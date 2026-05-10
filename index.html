@@ -190,7 +190,7 @@
         </label>
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border)" id="src-playlist-label">
           <input type="radio" name="spotify-source" value="playlist" onchange="onSourceChange()" style="accent-color:var(--accent)">
-          <span style="font-size:13px;font-weight:600">🎵 Playlist específica</span>
+          <span style="font-size:13px;font-weight:600">🎵 Playlist ou 💿 Álbum específico</span>
         </label>
       </div>
 
@@ -204,6 +204,7 @@
             style="padding-left:34px;margin-bottom:0"
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
         </div>
+        <div id="debug-bar" style="background:#ff475722;border:1px solid #ff475744;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-family:Space Mono,monospace;font-size:10px;color:#ff4757;display:none"></div>
         <!-- selected tags -->
         <div id="selected-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:0"></div>
         <!-- count -->
@@ -549,21 +550,35 @@ async function fetchAllSpotify() {
   const tracks = [];
   const source = document.querySelector('input[name="spotify-source"]:checked')?.value || 'all';
 
-  // ── Playlist(s) específica(s) ──
+  // ── Playlist(s) / Álbum(ns) específico(s) ──
   if(source === 'playlist') {
-    if(selectedPlaylists.size === 0) { setStatus('Escolhe pelo menos uma playlist primeiro.'); throw new Error('NO_PLAYLIST'); }
+    if(selectedPlaylists.size === 0) { setStatus('Escolhe pelo menos uma playlist ou álbum primeiro.'); throw new Error('NO_PLAYLIST'); }
     const plList = [...selectedPlaylists.values()];
     for(let pi=0; pi<plList.length; pi++) {
       const pl = plList[pi];
       setStatus(`A carregar ${pi+1}/${plList.length}: ${pl.name}…`);
-      let tUrl = `https://api.spotify.com/v1/playlists/${pl.id}/tracks?limit=100`;
-      while(tUrl) {
-        const d = await spotifyFetch(tUrl);
-        if(!d) break;
-        (d.items||[]).forEach(i => { if(i?.track?.id) tracks.push({...i.track, _source:`🎵 ${pl.name}`}); });
-        tUrl = d.next || null;
+      if(pl._type === 'album') {
+        // Álbum: usar endpoint /albums/{id}/tracks
+        let tUrl = `https://api.spotify.com/v1/albums/${pl.id}/tracks?limit=50`;
+        while(tUrl) {
+          const d = await spotifyFetch(tUrl);
+          if(!d) break;
+          (d.items||[]).forEach(t => {
+            if(t?.id) tracks.push({...t, _source:`💿 ${pl.name}`});
+          });
+          tUrl = d.next || null;
+        }
+      } else {
+        // Playlist
+        let tUrl = `https://api.spotify.com/v1/playlists/${pl.id}/tracks?limit=100`;
+        while(tUrl) {
+          const d = await spotifyFetch(tUrl);
+          if(!d) break;
+          (d.items||[]).forEach(i => { if(i?.track?.id) tracks.push({...i.track, _source:`🎵 ${pl.name}`}); });
+          tUrl = d.next || null;
+        }
       }
-      setStatus(`🎵 ${pl.name}: ${tracks.length} faixas total…`);
+      setStatus(`✓ ${pl.name}: ${tracks.length} faixas total…`);
     }
     const seen = new Set();
     return tracks.filter(t => t?.id && !seen.has(t.id) && seen.add(t.id));
@@ -596,19 +611,48 @@ async function fetchAllSpotify() {
 
   // ── Saved albums ──
   let albUrl = 'https://api.spotify.com/v1/me/albums?limit=50';
+  const savedAlbums = [];
   while(albUrl) {
     const d = await spotifyFetch(albUrl);
     if(!d) break;
-    (d.items || []).forEach(item => {
-      const alb = item?.album;
-      if(!alb) return;
-      (alb.tracks?.items || []).forEach(t => {
-        if(t?.id) tracks.push({...t, album: alb, _source:`💿 ${alb.name||'?'}`});
+    (d.items || []).forEach(item => { if(item?.album?.id) savedAlbums.push(item.album); });
+    albUrl = d.next || null;
+    setStatus(`💿 A recolher álbuns: ${savedAlbums.length}…`);
+  }
+  // Para cada álbum, buscar as faixas completas
+  for(let ai=0; ai<savedAlbums.length; ai++) {
+    const alb = savedAlbums[ai];
+    setStatus(`💿 Álbum ${ai+1}/${savedAlbums.length}: ${alb.name}…`);
+    // A API de álbum já inclui tracks na resposta inicial (até 50)
+    // mas para álbuns grandes precisamos de paginar
+    let tUrl = alb.tracks?.next
+      ? alb.tracks.next
+      : null;
+    // Adicionar faixas já incluídas na resposta do álbum
+    (alb.tracks?.items || []).forEach(t => {
+      if(t?.id) tracks.push({
+        ...t,
+        artists: t.artists || alb.artists,
+        album: {name: alb.name, id: alb.id},
+        _source: `💿 ${alb.name}`
       });
     });
-    albUrl = d.next || null;
-    setStatus(`💿 Albums: ${tracks.length} faixas…`);
+    // Paginar se houver mais faixas
+    while(tUrl) {
+      const d = await spotifyFetch(tUrl);
+      if(!d) break;
+      (d.items || []).forEach(t => {
+        if(t?.id) tracks.push({
+          ...t,
+          artists: t.artists || alb.artists,
+          album: {name: alb.name, id: alb.id},
+          _source: `💿 ${alb.name}`
+        });
+      });
+      tUrl = d.next || null;
+    }
   }
+  setStatus(`💿 ${savedAlbums.length} álbuns carregados — ${tracks.length} faixas total…`);
 
   // ── Playlists ──
   let plUrl = 'https://api.spotify.com/v1/me/playlists?limit=50';
@@ -868,19 +912,55 @@ function onSourceChange() {
 
 async function loadPlaylistList() {
   const listEl = document.getElementById('playlist-list');
-  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ A carregar playlists…</div>';
+  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ A carregar…</div>';
   allPlaylists = [];
+
+  // Carregar playlists
   let url = 'https://api.spotify.com/v1/me/playlists?limit=50';
   while(url) {
     const d = await spotifyFetch(url);
     if(!d) break;
-    (d.items||[]).forEach(i => { if(i?.id) allPlaylists.push(i); });
+    (d.items||[]).forEach(i => { if(i?.id) allPlaylists.push({...i, _type:'playlist'}); });
     url = d.next || null;
-    // mostrar progresso em tempo real
-    listEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--accent);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ ${allPlaylists.length} playlists carregadas…</div>`;
+    listEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--accent);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ ${allPlaylists.length} playlists…</div>`;
   }
+
+  // Carregar álbuns guardados
+  let albUrl = 'https://api.spotify.com/v1/me/albums?limit=50';
+  const albumItems = [];
+  while(albUrl) {
+    const d = await spotifyFetch(albUrl);
+    if(!d) break;
+    (d.items||[]).forEach(i => {
+      if(i?.album?.id) albumItems.push({
+        id: i.album.id,
+        name: i.album.name,
+        tracks: { total: i.album.total_tracks },
+        _type: 'album',
+        _artists: (i.album.artists||[]).map(a=>a.name).join(', ')
+      });
+    });
+    albUrl = d.next || null;
+    listEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--accent);font-family:Space Mono,monospace;font-size:11px;animation:pulse 1.5s ease infinite">⬡ ${allPlaylists.length} playlists + ${albumItems.length} álbuns…</div>`;
+  }
+
+  allPlaylists = [...allPlaylists, ...albumItems];
   allPlaylists.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'pt'));
-  document.getElementById('playlist-count').textContent = `${allPlaylists.length} playlists`;
+  document.getElementById('playlist-count').textContent = `${allPlaylists.length} items (playlists + álbuns)`;
+  // DEBUG
+  const dbg = document.getElementById('debug-bar');
+  if(dbg) {
+    if(allPlaylists.length === 0) {
+      dbg.style.display = 'block';
+      dbg.textContent = '⚠ Nenhuma playlist carregada. Token válido? Scope correto?';
+    } else {
+      dbg.style.display = 'block';
+      dbg.style.background = '#1DB95422';
+      dbg.style.color = 'var(--accent)';
+      dbg.style.borderColor = '#1DB95444';
+      dbg.textContent = `✓ ${allPlaylists.length} playlists carregadas. Ex: "${allPlaylists[0]?.name}", "${allPlaylists[1]?.name}"`;
+    }
+  }
   renderPlaylistList(allPlaylists);
 }
 
@@ -901,11 +981,27 @@ function fuzzyScorePlaylist(q, p) {
 
 function filterPlaylists() {
   const q = document.getElementById('playlist-search-input').value;
+  const dbg = document.getElementById('debug-bar');
+
   if(!q.trim()) {
     document.getElementById('playlist-count').textContent = `${allPlaylists.length} playlists`;
     renderPlaylistList(allPlaylists);
     return;
   }
+
+  // DEBUG: mostrar scores das primeiras 5
+  if(dbg && allPlaylists.length > 0) {
+    const sample = allPlaylists.slice(0,5).map(p => `"${p.name}"→${fuzzyScorePlaylist(q,p).toFixed(2)}`).join('  ');
+    dbg.style.display = 'block';
+    dbg.style.background = '#ffa50222';
+    dbg.style.color = 'var(--yellow)';
+    dbg.style.borderColor = '#ffa50244';
+    dbg.textContent = `DEBUG scores (primeiras 5): ${sample}`;
+  } else if(dbg && allPlaylists.length === 0) {
+    dbg.style.display = 'block';
+    dbg.textContent = '⚠ allPlaylists está vazia — playlists não carregadas!';
+  }
+
   const scored = allPlaylists
     .map(p => ({ p, score: fuzzyScorePlaylist(q, p) }))
     .filter(s => s.score >= 0.38)
@@ -928,22 +1024,25 @@ function renderPlaylistList(list, scored=[]) {
     const sel = selectedPlaylists.has(p.id);
     const score = scoreMap.get(p.id);
     const scorePct = score !== undefined ? Math.min(Math.round(score/2*100),100) : null;
+    const isAlbum = p._type === 'album';
+    const icon = isAlbum ? '💿' : '🎵';
+    const sub = isAlbum && p._artists ? p._artists : '';
     return `<div onclick="togglePlaylist('${p.id}')"
       style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;
              display:flex;align-items:center;gap:10px;
              background:${sel ? '#1DB95414' : 'transparent'};
-             transition:background .15s"
-      onmouseover="if(!${sel})this.style.background='#ffffff06'" onmouseout="if(!${sel})this.style.background='${sel?'#1DB95414':'transparent'}'">
-      <!-- Checkbox -->
+             transition:background .15s">
       <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${sel?'var(--accent)':'var(--border)'};
                   background:${sel?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;
-                  flex-shrink:0;transition:all .15s;font-size:12px">
+                  flex-shrink:0;transition:all .15s;font-size:12px;color:#000">
         ${sel ? '✓' : ''}
       </div>
+      <div style="font-size:16px;flex-shrink:0">${icon}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
                     color:${sel?'var(--accent)':'var(--text)'}">${esc(p.name||'?')}</div>
-        <div style="font-size:10px;color:var(--muted);font-family:Space Mono,monospace;margin-top:2px;display:flex;gap:8px">
+        <div style="font-size:10px;color:var(--muted);font-family:Space Mono,monospace;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
+          ${sub ? `<span>${esc(sub)}</span>` : ''}
           <span>${p.tracks?.total||0} faixas</span>
           ${scorePct!==null ? `<span style="color:${scorePct>80?'var(--accent)':scorePct>55?'var(--yellow)':'var(--muted)'}">≈${scorePct}%</span>` : ''}
         </div>
