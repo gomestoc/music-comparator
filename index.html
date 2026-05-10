@@ -168,10 +168,44 @@
     <div class="card-title">1 · Spotify</div>
     <div class="card-sub">Precisas de um Client ID da Spotify Developer App.</div>
     <input class="input" id="spotify-client-id" placeholder="Cola aqui o Client ID…" autocomplete="off" />
-    <button class="btn btn-spotify" onclick="loginSpotify()">
+    <button class="btn btn-spotify" onclick="loginSpotify()" style="margin-bottom:0">
       <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.622.622 0 0 1-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 0 1-.277-1.215c3.809-.87 7.076-.496 9.712 1.115a.623.623 0 0 1 .207.857zm1.223-2.722a.78.78 0 0 1-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 0 1-.973-.519.781.781 0 0 1 .52-.973c3.632-1.102 8.147-.568 11.233 1.329a.78.78 0 0 1 .257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 1 1-.543-1.794c3.532-1.071 9.404-.864 13.115 1.338a.937.937 0 0 1-.954 1.614z"/></svg>
       Ligar Spotify
     </button>
+
+    <!-- Playlist selector — aparece após login -->
+    <div id="playlist-selector" style="display:none;margin-top:16px">
+      <div style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:8px;">
+        FONTE A COMPARAR
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border)" id="src-all-label">
+          <input type="radio" name="spotify-source" value="all" checked onchange="onSourceChange()" style="accent-color:var(--accent)">
+          <span style="font-size:13px;font-weight:600">Toda a coleção</span>
+          <span style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-left:auto">Liked + Albums + Playlists</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border)" id="src-liked-label">
+          <input type="radio" name="spotify-source" value="liked" onchange="onSourceChange()" style="accent-color:var(--accent)">
+          <span style="font-size:13px;font-weight:600">❤️ Liked Songs</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border)" id="src-playlist-label">
+          <input type="radio" name="spotify-source" value="playlist" onchange="onSourceChange()" style="accent-color:var(--accent)">
+          <span style="font-size:13px;font-weight:600">🎵 Playlist específica</span>
+        </label>
+      </div>
+
+      <!-- Playlist search/select — aparece ao escolher "playlist" -->
+      <div id="playlist-search-box" style="display:none;margin-top:12px">
+        <input class="input" id="playlist-search-input" placeholder="Pesquisar playlist…"
+          oninput="filterPlaylists()" style="margin-bottom:8px" />
+        <div id="playlist-list" style="max-height:220px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+          <div style="padding:16px;text-align:center;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px">
+            A carregar playlists…
+          </div>
+        </div>
+        <div id="playlist-selected-info" style="margin-top:8px;font-size:11px;font-family:'Space Mono',monospace;color:var(--accent);min-height:16px"></div>
+      </div>
+    </div>
   </div>
 
   <div class="card" style="border-left:4px solid var(--blue)">
@@ -417,6 +451,7 @@ async function handleSpotifyCallback() {
     checkRunReady();
     setStatus('');
     document.getElementById('spotify-client-id').value = clientId;
+    showPlaylistSelector();
   }
   history.replaceState({}, '', location.pathname);
 }
@@ -461,6 +496,7 @@ function updateBadges() {
 
 function checkRunReady() {
   document.getElementById('btn-run').disabled = !spotifyToken;
+  if(spotifyToken) showPlaylistSelector();
 }
 
 function setStatus(msg) {
@@ -499,8 +535,40 @@ async function spotifyFetch(url) {
 
 async function fetchAllSpotify() {
   const tracks = [];
+  const source = document.querySelector('input[name="spotify-source"]:checked')?.value || 'all';
 
-  // ── Liked songs ──
+  // ── Playlist específica ──
+  if(source === 'playlist') {
+    if(!selectedPlaylistId) { setStatus('Escolhe uma playlist primeiro.'); throw new Error('NO_PLAYLIST'); }
+    setStatus(`A carregar: ${selectedPlaylistName}…`);
+    let tUrl = `https://api.spotify.com/v1/playlists/${selectedPlaylistId}/tracks?limit=100`;
+    while(tUrl) {
+      const d = await spotifyFetch(tUrl);
+      if(!d) break;
+      (d.items||[]).forEach(i => { if(i?.track?.id) tracks.push({...i.track, _source:`🎵 ${selectedPlaylistName}`}); });
+      tUrl = d.next || null;
+      setStatus(`🎵 ${selectedPlaylistName}: ${tracks.length} faixas…`);
+    }
+    const seen = new Set();
+    return tracks.filter(t => t?.id && !seen.has(t.id) && seen.add(t.id));
+  }
+
+  // ── Só Liked Songs ──
+  if(source === 'liked') {
+    let url = 'https://api.spotify.com/v1/me/tracks?limit=50';
+    while(url) {
+      const d = await spotifyFetch(url);
+      if(!d) break;
+      (d.items||[]).forEach(i => { if(i?.track?.id) tracks.push({...i.track, _source:'❤️ Liked'}); });
+      url = d.next || null;
+      setStatus(`❤️ Liked Songs: ${tracks.length}…`);
+    }
+    const seen = new Set();
+    return tracks.filter(t => t?.id && !seen.has(t.id) && seen.add(t.id));
+  }
+
+  // ── Toda a coleção (source === 'all') ──
+  // Liked songs
   let url = 'https://api.spotify.com/v1/me/tracks?limit=50';
   while(url) {
     const d = await spotifyFetch(url);
@@ -763,6 +831,73 @@ if(savedFolderId) {
   document.getElementById('folder-preview').textContent = '✓ ID: ' + savedFolderId;
 }
 checkRunReady();
+
+// ── Playlist selector logic ────────────────────────────────────────────────
+let allPlaylists = [];       // full list fetched from Spotify
+let selectedPlaylistId = null;
+let selectedPlaylistName = '';
+
+function onSourceChange() {
+  const val = document.querySelector('input[name="spotify-source"]:checked').value;
+  document.getElementById('playlist-search-box').style.display = val === 'playlist' ? 'block' : 'none';
+  if(val === 'playlist' && allPlaylists.length === 0 && spotifyToken) {
+    loadPlaylistList();
+  }
+}
+
+async function loadPlaylistList() {
+  const listEl = document.getElementById('playlist-list');
+  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-family:Space Mono,monospace;font-size:11px">A carregar…</div>';
+  allPlaylists = [];
+  let url = 'https://api.spotify.com/v1/me/playlists?limit=50';
+  while(url) {
+    const d = await spotifyFetch(url);
+    if(!d) break;
+    (d.items||[]).forEach(i => { if(i?.id) allPlaylists.push(i); });
+    url = d.next || null;
+  }
+  // Sort alphabetically
+  allPlaylists.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'pt'));
+  renderPlaylistList(allPlaylists);
+}
+
+function filterPlaylists() {
+  const q = document.getElementById('playlist-search-input').value.toLowerCase();
+  const filtered = q ? allPlaylists.filter(p => (p.name||'').toLowerCase().includes(q)) : allPlaylists;
+  renderPlaylistList(filtered);
+}
+
+function renderPlaylistList(list) {
+  const el = document.getElementById('playlist-list');
+  if(!list.length) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-family:Space Mono,monospace;font-size:11px">Sem resultados</div>';
+    return;
+  }
+  el.innerHTML = list.map(p => `
+    <div onclick="selectPlaylist('${p.id}','${(p.name||'').replace(/'/g,"\\'")}',${p.tracks?.total||0})"
+      style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .15s"
+      onmouseover="this.style.background='#ffffff08'" onmouseout="this.style.background=''"
+      id="pl-item-${p.id}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name||'?')}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:Space Mono,monospace;margin-top:2px">${p.tracks?.total||0} faixas</div>
+      </div>
+      ${selectedPlaylistId===p.id ? '<span style="color:var(--accent);font-size:16px">✓</span>' : ''}
+    </div>`).join('');
+}
+
+function selectPlaylist(id, name, total) {
+  selectedPlaylistId = id;
+  selectedPlaylistName = name;
+  document.getElementById('playlist-selected-info').textContent = `✓ Selecionada: ${name} (${total} faixas)`;
+  // re-render to show checkmark
+  filterPlaylists();
+}
+
+// Show selector after login
+function showPlaylistSelector() {
+  document.getElementById('playlist-selector').style.display = 'block';
+}
 </script>
 
 <!-- Service Worker registration -->
